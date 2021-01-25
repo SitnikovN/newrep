@@ -7,3 +7,49 @@
   
  Конвертация поля в дату: to_date(substring(match_date,1,10),'yyyy-mm-dd') 
  Селект с выражением можно прикрепить прямо сюда.
+---
+
+Функция
+
+create or replace function test_func(p_match_date varchar)
+returns varchar as 
+$BODY$
+DECLARE
+    season varchar;
+BEGIN
+	with date as
+	(
+	select to_date(substring(p_match_date,1,10),'yyyy-mm-dd') m_date
+	),
+	yearandmes as
+	(
+	select
+	date_part('year', m_date)-2000 god, date_part('month', m_date) mesyac
+	from date
+	)
+	select  
+	case when mesyac>=8 then concat(god, '/', god+1) else concat (god-1, '/', god) end season
+	into season
+	from yearandmes;
+	return season;
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+---update
+update matches_old_test t1 
+set season_test = (
+with date as
+(
+select to_date(substring(t1.match_date,1,10),'yyyy-mm-dd') m_date
+),
+yearandmes as
+(
+select
+date_part('year', m_date)-2000 god, date_part('month', m_date) mesyac
+from date
+)
+select  
+case when mesyac>=8 then concat(god, '/', god+1) else concat (god-1, '/', god) end season
+from yearandmes
+)
