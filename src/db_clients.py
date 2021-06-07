@@ -6,7 +6,6 @@ import creds
 class PostgreClient(dca.DBClient):
     def __init__(self, con_params):
         import psycopg2 as ps
-
         try:
             self.con = ps.connect(**con_params)
             self.cursor = self.con.cursor()
@@ -22,13 +21,11 @@ class PostgreClient(dca.DBClient):
         data = []
         for x in self.cursor:
             data.append(x)
-
         return data
 
     def dump_df(self,sql_stmt,column_lst):
         data_to_dump  = self.select_data(sql_stmt)
         df = pd.DataFrame.from_records(data_to_dump, columns=column_lst)
-
         return df
 
     def kill(self):
