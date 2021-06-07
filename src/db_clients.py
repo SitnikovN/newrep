@@ -36,6 +36,16 @@ class PostgreClient(dca.DBClient):
         print('Connection has been closed')
 
 class TeradataClient(dca.DBClient):
+    def __init__(self,con_params):
+        import teradata
+        try:
+            self.con = cfg.UDAExec.connect(**con_params)
+            print('Connected to the Teradata server')
+
+        except:
+            print('Failed to connect to the server')
+            exit(1)
+            
     def select_data(self,sql_stmt):
         res = self.con.execute(sql_stmt)
         if res.rowcount == 0:
@@ -48,16 +58,6 @@ class TeradataClient(dca.DBClient):
             for row in res:
                 testlist.append(dict(zip(columnNames, row)))
             return testlist
-
-    def __init__(self,con_params):
-        import teradata
-        try:
-            self.con = cfg.UDAExec.connect(**con_params)
-            print('Connected to the Teradata server')
-
-        except:
-            print('Failed to connect to the server')
-            exit(1)
 
     def dump_df(self,sql_stmt):
         df = pd.read_sql(sql_stmt, self.con)
