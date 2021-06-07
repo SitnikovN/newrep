@@ -1,0 +1,7 @@
+﻿1. Check current state of hdfs via CLI, describe the state and make a screenshot. - 
+не совсем понял задачу, как пример вывел в аутпут просто результат команды hdfs dfsadmin -report , на котором можно посмотреть метаданные
+сконфигурированных Датанод.
+
+2. Perform checking file system - hdfs dfs -ls /user/ - пример директорий сервисов и файлов 
+3. Move stored dataset (or rename it) via CLI and make screenshot. - передвинул avro файлы в свою директорию.
+

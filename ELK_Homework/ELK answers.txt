@@ -1,0 +1,301 @@
+What is ELK and what it is used for?
+-------------------------------------
+The ELK Stack is a collection of three open-source products — Elasticsearch, Logstash, and Kibana.
+	
+E stands for ElasticSearch: used for storing logs
+L stands for LogStash : used for both shipping as well as processing and storing logs
+K stands for Kibana: is a visutalization tool (a web interface) which is hosted through Nginx or Apache
+
+ELK Stack is designed to allow users to take to data from any source, in any format, and to search, analyze, and visualize that data in real time.
+ELK provides centralized logging that be useful when attempting to identify problems with servers or applications. It allows you to search all your
+logs in a single place. It also helps to find issues that occur in multiple servers by connecting their logs during a specific time frame.
+
+
+
+Describe key concepts of Elasticsearch:	
+
+Cluster		
+Node (with types)		
+Index
+Document	
+Shard
+Replica
+--------------------------------------
+
+An Elasticsearch cluster is a group of nodes that have the same cluster.name attribute and stores data and provide capabilities for searching, indexing, 
+retrieving it. As nodes join or leave a cluster, the cluster automatically reorganizes itself to evenly distribute the data across the available nodes.
+
+A node is an elasticsearch Instance. It is created when an elasticsearch instance begins.
+It is single machine, capable of joining the cluster. Node is able to participate in indexing and searching process. 
+It is identified by UUID (Universally Unique Identifier), that is assigned to the node on startup. 
+
+You can define the roles of a node by setting node.roles. If you don’t configure this setting, then the node has the following roles by default:
+
+master - A node that has the master role (default), which makes it eligible to be elected as the master node, which controls the cluster.
+data - A node that has the data role (default). Data nodes hold data and perform data related operations such as CRUD, search, and aggregations.
+ingest - Ingest nodes are able to apply an ingest pipeline to a document in order to transform and enrich the document before indexing.
+tribe - Special type of coordinating node, which is able to connect to several clusters and perform searches across all connected clusters. 
+
+An index is like a ‘database’ in a relational database. It has a mapping which defines multiple types.
+Index is collection of indexed documents. Index is identified by it’s name and this name should be used to refer to different operations 
+(indexing, searching and others) that should be executed against this index. 
+An Elasticsearch cluster can contain multiple Indices (databases), which in turn contain multiple Types (tables). These types hold multiple Documents (rows), and each document has Properties(columns).
+
+Document is a basic unit, that Elasticsearch manipulates. You could index the document, to be able to search it later. Each document consists of several fields and is expressed in a JSON format. In the world of relational databases, documents can be compared to a row in table.
+
+Shards are a single Lucene index. They are the building blocks of Elasticsearch and what facilitate its scalability. Sharding is a technique allowing 
+to split up indices horizontally into pieces because there is no limit to how many documents you can store on each index, an index may take up an amount of disk space that exceeds the limits of the hosting server. The parameter can be defined while creating an index ("number_of_shards").
+
+Elasticsearch provides the capability to maintain one or more copies of index’s shards, which are called replicas. Replicas provides ability to tolerate node/shard failures. E.g. cluster still could route the query to the replica in order to return results.It’s very important, that 
+replica is never been allocated on the same node, where the original shard is. Like with shards, the number of replicas can be defined per index when the index is created ("number_of_replicas").
+
+-------------------------------------------
+
+Each document has metadata associated with it, such as the _index, mapping _type, and _id metadata fields. The behavior of some of these metadata fields can be customized when a mapping type is created.
+
+_index - The index to which the document belongs. The _index field allows matching on the index a document was indexed into.
+_id    - Each document has an _id that uniquely identifies it, which is indexed so that documents can be looked up either with 
+	 the GET API or the ids query.
+_source - The original JSON representing the body of the document.The _source field contains the original JSON document body that 
+	 was passed at index time. The _source field itself is not indexed (and thus is not searchable), but it is stored so that it can 
+	 be returned when executing fetch requests, like get or search.
+
+Elasticsearch SQL can return the data in the following formats which can be set either through the format property in the URL or by setting 
+the Accept HTTP header:
+   The CSV format accepts a formatting URL query attribute, delimiter, which indicates which character should be used to separate the CSV values.
+   Also available formats are: JSON, TSV, TXT etc.
+
+--------------------------------------------
+Refresh & Flush
+
+Refresh - operation, during which the in-memory buffer contents is copied to a newly created segment in the memory, thus becoming available for search. But data is not persistent as it is not written to the disk. 
+
+Flush - Flush essentially means that all the documents in the in-memory buffer are written to new segments. These, along with all existing in-memory segments, are committed to the disk, which clears the translog. 
+
+--------------------------------------------
+Document Update
+
+Updating documents take place through Update API using Elastic scripting language. 
+Request is as follows: POST /<index>/_update/<_id>
+
+<index> - Name of the target index.
+<_id> - Unique identifier for the document to be updated.
+
+Some examples: 
+
+Create index:
+PUT test/_doc/1
+{
+  "counter" : 1,
+  "tags" : ["red"]
+}
+
+Increment counter by value specified in parameter using Update API:
+
+POST test/_update/1
+{
+  "script" : {
+    "source": "ctx._source.counter += params.count",
+    "lang": "painless",
+    "params" : {
+      "count" : 4
+    }
+  }
+}
+
+Adding new field:
+
+POST test/_update/1
+{
+  "script" : "ctx._source.new_field = 'value_of_new_field'"
+}
+
+Similarly, we can add tag:
+
+POST test/_update/1
+{
+  "script": {
+    "source": "ctx._source.tags.add(params.tag)",
+    "lang": "painless",
+    "params": {
+      "tag": "blue"
+    }
+  }
+}
+
+Upserts - If the document does not already exist, the contents of the upsert element are inserted as a new document. If the document exists, the script is executed:
+
+POST test/_update/1
+{
+  "script": {
+    "source": "ctx._source.counter += params.count",
+    "lang": "painless",
+    "params": {
+      "count": 4
+    }
+  },
+  "upsert": {
+    "counter": 1
+  }
+}
+----------------------------------------------------
+Mapping/Dynamic Mapping (the text type)
+
+Mapping is the process of defining how a document, and the fields it contains, are stored and indexed.
+Mapping enables to determine the format of date values, which fields contain numbers, dates, or geolocations or string fields should be treated as full text fields.
+
+A mapping definition has:
+Metadata fields - used to customize how a document’s associated metadata is treated. Examples of metadata fields include the document’s _index, _id, and _source fields.
+Fields - list of fields or properties pertinent to the document. Each field has its own data type.
+
+Dynamic Mapping feature allows to omit steps related to creating an index, defining its mapping type and fields. 
+For example:
+	PUT data/_doc/1 
+	{ "count": 5 }  	
+Creates the data index, the _doc mapping type, and a field called count with data type long.
+
+Some of data maps:
+true or false --> boolean field
+integer --> long field
+string - Either a date field (if the value passes date detection), a double or long field (if the value passes numeric detection) or a text field.
+---------------------------------------------------
+Elasticsearch API. Search Endpoint
+
+A search query, or query, is a request for information about data in Elasticsearch data streams or indices.
+
+A search consists of one or more queries that are combined and sent to Elasticsearch. Documents that match a search’s queries are returned in the hits, or search results, of the response.
+
+The search API is used to search and aggregate data stored in Elasticsearch data streams or indices. The API’s query request body parameter accepts queries written in Query DSL.
+
+Example of search query:
+
+GET /bank/_search
+{
+  "query": { "match_all": {} },
+  "sort": [
+    { "account_number": "asc" }
+  ]
+}
+
+Example of response:
+{
+  "took" : 63,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 5,
+    "successful" : 5,
+    "skipped" : 0,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : {
+        "value": 1000,
+        "relation": "eq"
+    },
+    "max_score" : null,
+    "hits" : [ {
+      "_index" : "bank",
+      "_type" : "_doc",
+      "_id" : "0",
+      "sort": [0],
+      "_score" : null,
+      "_source" : {"account_number":0,"balance":16623,"firstname":"Bradshaw","lastname":"Mckenzie","age":29,"gender":"F","address":"244 Columbus Place","employer":"Euron","email":"bradshawmckenzie@euron.com","city":"Hobucken","state":"CO"}
+    }
+The response also provides the following information about the search request:
+
+took – how long it took Elasticsearch to run the query, in milliseconds
+timed_out – whether or not the search request timed out
+_shards – how many shards were searched and a breakdown of how many shards succeeded, failed, or were skipped.
+max_score – the score of the most relevant document found
+hits.total.value - how many matching documents were found
+hits.sort - the document’s sort position (when not sorting by relevance score)
+hits._score - the document’s relevance score (not applicable when using match_all)
+----------------------
+Elasticsearch API. Term & Term-Level Queries
+
+You can use term-level queries to find documents based on precise values in structured data. Examples of structured data include date ranges, 
+IP addresses, prices, or product IDs. Unlike full-text queries, term-level queries do not analyze search terms. Instead, 
+term-level queries match the exact terms stored in a field.
+
+Term query to search for an exact term in a field:
+
+GET shakespeare/_search
+{
+  "query": {
+    "term": {
+      "line_id": {
+        "value": "61809"
+      }
+    }
+  }
+}
+
+Terms query to search for multiple terms in the same field.
+GET shakespeare/_search
+{
+  "query": {
+    "terms": {
+      "line_id": [
+        "61809",
+        "61810"
+      ]
+    }
+  }
+}
+
+range query to search for a range of values in a field.
+GET shakespeare/_search
+{
+  "query": {
+    "range": {
+      "line_id": {
+        "gte": 10,
+        "lte": 20
+      }
+    }
+  }
+}
+
+regex query to search for terms that match a regular expression.
+This regular expression matches any single uppercase or lowercase letter:
+GET shakespeare/_search
+{
+  "query": {
+    "regexp": {
+      "play_name": "H[a-zA-Z]+mlet"
+    }
+  }
+}
+
+What is Kibana/Logstash/Beats?
+------------------------------
+Kibana is an open source data visualization dashboard for Elasticsearch. It provides visualization capabilities on top of the content indexed on an Elasticsearch cluster. Users can create bar, 
+line and scatter plots, or pie charts and maps on top of large volumes of data.Kibana also provides a presentation tool, 
+referred to as Canvas, that allows users to create slide decks that pull live data directly from Elasticsearch.
+
+Logstash is an open source data collection engine with real-time pipelining capabilities. 
+Logstash can dynamically unify data from disparate sources and normalize the data into destinations of your choice.
+While Logstash originally drove innovation in log collection, its capabilities extend well beyond that use case. Any type of event can be 
+enriched and transformed with a broad array of input, filter, and output plugins, with many native codecs further simplifying the ingestion process.
+
+The Elastic Stack expands the capabilities of Elasticsearch by adding extremely useful tooling to work alongside Elasticsearch. 
+One of most useful of these tools is the Beats ecosystem. Beats are essentially lightweight, purpose-built agents that acquire 
+data and then feed it to Elasticsearch.
+Elastic provides Beats for capturing:
+Audit data (Auditbeat),
+Log files (Filebeat) and etc.
+Beats can send data directly to Elasticsearch or via Logstash, where you can further process and enhance the data, before visualizing it in Kibana.
+
+Filebeat is designed to read files from your system. It is particularly useful for system and application log files, 
+but can be used for any text files that you would like to index to Elasticsearch in some way. In the logging case, 
+it helps centralize logs and files in an efficient manner by reading from your various servers and VMs, then shipping to 
+a central Logstash or Elasticsearch instance. 
+---------------------
+What is MetricBeat
+
+Metricbeat
+As the name implies, Metricbeat is used to collect metrics from servers and systems. It is a lightweight platform dedicated 
+to sending system and service statistics. Like Filebeat, Metricbeat includes modules to grab metrics from operating systems like 
+Linux, Windows and Mac OS, applications such as Apache, MongoDB, MySQL and nginx.
+
+

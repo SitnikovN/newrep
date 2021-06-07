@@ -1,0 +1,3 @@
+On the screenshot we can see how many events processed on a minute basis. X-axis is time dimension, and Y-axis is count of
+loaded documents into elastic index. The minimum interval, minute in this case, is optional and can be changed to 
+whatever is required.
