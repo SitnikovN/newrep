@@ -1,0 +1,120 @@
+1. HDFS Node Types - HDFS has a master/slave architecture. 
+An HDFS has a single Namenode, which primary responsibility is to manage the file system namespace and regulate access to files by clients. And also there are so-called slave nodes (Datanodes), that actually store the data.
+
+2. How HDFS achieves Fault Tolerance - Fault tolerance refers to the ability of the system to work or operate in case of unfavorable conditions. 
+		By using replication mechanism (copying each block n times to different d-nodes), HDFS makes sure that data blocks are accessible from different locations (i.e. datanodes). 
+		
+		Erasure Coding (Hadoop 3+) - data recovering method based on mathematical algorithms. 
+			Basically, this technology enables to restore missing data based on present units of information.
+			a natural improvement is to use Erasure Coding (EC) in place of replication, which provides the same level of fault-tolerance with much less storage space. 
+			In typical Erasure Coding (EC) setups, the storage overhead is no more than 50%.
+
+3. Block size. Physical allocation of blocks.  - Blocks are the smallest continuous location on your hard drive where data is stored. The default block size is in HDFS is 128MB.  For example, a file of size 190 Mb will be divided into 2 blocks (128 + 62) , with each block replicated thrice on different d-nodes (default repl factor).
+
+4. Small files problem and solutions. 
+
+As the Namenode stores the metadata information on memory, too much of files will lead to the generation of too much meta data and storing these meta data in the RAM will become a challenge. 
+Hadoop Archive was introduced to cope up with the problem of increasing memory usage of the NameNode for storing the metadata information because of too many small files. Basically, it allows us to pack a number of small HDFS files into a single archive file and therefore, reducing the metadata information. 
+
+5. Rack and rack awareness. Data locality. 
+ A rack is a collection of n-nodes (30-40) that are physically stored close together and are all connected to the same network switch.
+ Rack Awareness is algorithm in Hadoop which ensures that all the block replicas are not stored on the same rack or a single rack. 
+ Data locality is  the ability to move the computation close to where the actual data resides on the node, instead of moving large data to computation. This minimizes network congestion and increases the overall throughput of the system.
+
+6. NameNode management of data fsimage and editlogs. Secondary NameNode.
+
+NameNode persists its namespace using two files: fsimage, which is the latest checkpoint of the namespace and edits, a journal (log) of changes to the namespace since the checkpoint. 
+The NameNode writes current changes into editlog file. Secondary NameNode periodically merges fsimage and editlog file (to keep the latter within a limit) and transmittes it back to the NameNode.
+
+7. High Availability.
+High Availability feature stems from the problem of cluster unavailability in case if NameNode is down for some reason.
+The HDFS High Availability feature addresses the above problems by providing the option of running two  redundant NameNodes in the same cluster in an Active/Passive configuration with a hot standby(s).  
+
+In a typical HA cluster, two or more separate machines are configured as NameNodes. At any point in time, exactly one of the NameNodes is in an Active state, and the others are in a Standby state. The Active NameNode is responsible for all client operations in the cluster, while the Standby is simply acting as a slave, maintaining enough state to provide a fast failover if necessary.
+ 
+
+8. What are differences between CheckpointingNameNode and BackupNameNode?
+
+The Backup Node provides the same functionality as the Checkpoint Node, but is synchronized with the NameNode. 
+It doesn’t need to fetch the changes periodically because it receives a stream of file system edits from the NameNode. 
+It holds the current state in-memory and just need to save this to an image file to create a new checkpoint.
+
+9. Namespaces and Federation
+
+Namespace consists of directories, files and blocks.
+It supports all the namespace related file system operations such as create, delete, modify and list files and directories.
+The prior HDFS architecture allows only a single namespace for the entire cluster. In that configuration, a single Namenode manages the namespace. 
+HDFS Federation addresses this limitation by adding support for multiple Namenodes/namespaces to HDFS.
+
+The isolation of namenodes is achieved by using Block Pooling. A Block Pool is a set of blocks that belong to a single namespace. 
+Datanodes store blocks for all the block pools in the cluster. Each Block Pool is managed independently. 
+This allows a namespace to generate Block IDs for new blocks without the need for coordination with the other namespaces.
+
+10. Pros and cons of HDFS Architecture
+  + Fault Tolerant (achieved by either replication or erasure coding)
+  + High Availability  - we can configure StandBy NameNode 
+  + Scalability - easy to add machine to the cluster, no need to do configuration work, it can be done on the fly.
+  - Small file issues - Saving lots of files comes with NameNode memory overhead, which might become a bottleneck in the system.
+  - Data is read/written to disks, which makes read/write operations very expensive when we are dealing with tera and petabytes of data.
+   
+11. File Formats:
+  ORC - The Optimized Row Columnar (ORC) file format provides a highly efficient way to store Hive data. It was designed to overcome limitations of the other Hive file formats. 
+	Using ORC files improves performance when Hive is reading, writing, and processing data.
+	An ORC file contains groups of row data called stripes, along with auxiliary information in a file footer. 
+	At the end of the file a postscript holds compression parameters and the size of the compressed footer.
+	Each stripe in an ORC file holds index data, row data, and a stripe footer.The stripe footer contains a directory of stream locations. 
+	Row data is used in table scans.Index data includes min and max values for each column and the row positions within each column.
+  SequenceFiles - flat data storage format consisting of binary key/value pairs.
+	There are 3 different SequenceFile formats: Uncompressed key/value records. 
+		2. Record compressed key/value records - only 'values' are compressed here. 
+		3. Block compressed key/value records - both keys and values are collected in 'blocks' separately and compressed. 
+			The size of the 'block' is configurable.
+  
+AVRO - row-oriented serializtion storage format. It uses JSON for defining data types and protocols, and serializes data in a compact binary format.
+	Avro relies on schemas. When Avro data is read, the schema used when writing is always present. 
+	This permits each datum to be written with no per-value overheads, making serialization both fast and small. 
+	This also facilitates use with dynamic, scripting languages, since data, together with its schema, is fully self-describing. 
+
+Parquet - column-oriented data storage format. 
+	One of the unique features of Parquet is that it can store data with nested structures in columnar fashion too. 
+	This means that in a Parquet file format, even the nested fields can be read individually without the need to read all 
+	the fields in the nested structure. Parquet format uses the record shredding and assembly algorithm for storing nested structures 
+	in columnar fashion. 
+--
+
+Sequence - They encode a key and a value for each record and nothing more.Does not encode the structure of the keys and values.
+Avro 	 - Very convenient for storing complex objects, as it can be viewed as good data serialization platform.
+	   The format encodes the schema of its contents directly in the file which allows you to store complex objects natively. 
+Parquet  - Good for analytical purposes, as it stores data in columns which provides good opportunities for compressing of data.
+	   Parquet seems to have the most community support and developed APIs.
+
+12. What is Yarn?
+	YARN is the Hadoop's resource management and job scheduling technology. 
+	One of Apache Hadoop's core components, YARN is responsible for allocating system resources to the various applications running in a Hadoop cluster and 
+	scheduling tasks to be executed on different cluster nodes.
+	YARN provides APIs for requesting and working with cluster resources, but these APIs are not typically used directly by user code.
+	Instead, users write to higher-level APIs provided by distributed computing frameworks, which themselves are built on YARN and 
+	hide the resource management details from the user.
+
+
+13. Types of schedulers (FIFO, Fair, Capacity) and how they work:
+	FIFO - first in first out logic, this scheduler places applications in a queue and runs them in the order of submission. 
+		Large applications will use all the resources in a cluster, so each application has to wait its turn.
+	Capacity - Capacity scheduler maintains a separate queue for small jobs in order to start them as soon a request initiates. 
+		However, this comes at a cost as we are dividing cluster capacity hence large jobs will take more time to complete. 
+	Fair - Dynamically balanced type of scheduler. For example, after the first (large) job starts, it is the only job running, so it gets all the resources in the cluster. 
+		When the second (small) job starts, it is allocated half of the cluster resources so that each job is using its fair share of resources.
+		
+14. Describe the process of resource distribution during launching of disributed application:
+	the YARN consists of the following key components:
+	  ResourceManager that accepts job submissions from users, schedules the jobs and allocates resources to them;
+	  Node managers running on all the nodes in the cluster to launch and monitor containers (area with defined CPU, RAM and etc within which app process is run).
+	  ApplicationMaster that's created for each application to negotiate for resources and work with the NodeManager to execute and monitor tasks.
+	
+	run logic: client contacts the resource manager and asks it to run an application master process,the resource manager then
+		finds a node manager that can launch the application master in a container. Once resourses are allocated and container is ready, 
+		App process can implement its logic. 
+
+
+
+	  

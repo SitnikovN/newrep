@@ -1,0 +1,427 @@
+Spark VS map Reduce (in memory computation).
+--------------------------------------------
+
+Apache Spark is a cluster-computing platform that provides an API for distributed programming similar to the MapReduce model, but is designed 
+to be fast for interactive queries and iterative algorithms.1 It primarily achieves this by caching data required for computation in the memory 
+of the nodes in the cluster. In-memory cluster computation enables Spark to run iterative algorithms, as programs can checkpoint data and refer 
+back to it without reloading it from disk.
+
+The MapReduce model uses a pull execution model that requires intermediate writes of data back to HDFS. Though MapReduce is incredibly safe and 
+resilient, it is also necessarily slow on a per-task basis. Worse, almost all applications must chain multiple MapReduce jobs together 
+in multiple steps, creating a data flow toward the final required result. This results in huge amounts of intermediate data written to HDFS
+that is not required by the user, creating additional costs in terms of disk usage.
+
+what is rdd, what it consist of?
+---------------------------------------------
+RDDs are essentially a programming abstraction that represents a read-only collection of objects that are partitioned across a set of machines.
+RDDs can be rebuilt from a lineage (and are therefore fault tolerant), are accessed via parallel operations, can be read from and written 
+to distributed storages (e.g., HDFS or S3), and most importantly, can be cached in the memory of worker nodes for immediate reuse.
+
+Partition is a logical chunk of a large data set.Very often data we are processing can be separated into logical partitions (for example, 
+payments from the same country, ads displayed for given cookie, etc).
+RDDs are partitioned collections of data that allow the programmer to apply operations to the entire collection in parallel.
+ 
+It is the partitions that allow the parallelization, and the partitions themselves are computed boundaries in the list where 
+data is stored on different nodes. Therefore “parallelization” is the act of partitioning a dataset and sending each part of 
+the data to the node that will perform computations upon it.
+
+actions and transformations
+----------------------------------------------
+There are two types of operations that can be applied to RDDs: transformations and actions. Transformations are operations that are 
+applied to an existing RDD to create a new RDD.For example, applying a filter operation on an RDD to generate a smaller RDD of filtered
+values. Actions, however, are operations that actually return a result back to the Spark driver program—resulting in a coordination or
+ aggregation of all partitions in an RDD. 
+In this model, map is a transformation, because a function is passed to every object stored in
+ the RDD and the output of that function maps to a new RDD. On the other hand, an aggregation like reduce is an action, because reduce 
+requires the RDD to be repartitioned (according to a key) and some aggregate value like sum or mean computed and returned. 
+
+wide and narrow transformations
+------------------------------------
+There are two types of transformations, those that specify narrow dependencies and those that specify wide dependencies.
+Transformations consisting of narrow dependencies (narrow transformations) are those where each input  partition will contribute 
+to only one output partition.
+
+A wide dependency (or wide transformation) style transformation will have input partitions contributing to many output partitions. 
+This often can be referred to as a shuffle where Spark will exchange partitions across the cluster. With narrow transformations,
+Spark will automatically perform an operation called pipelining on narrow dependencies, this means that if we specify multiple filters 
+on DataFrames they’ll all be performed in-memory. The same cannot be said for shuffles. When we perform a shuffle, Spark will write the 
+results to disk.
+
+What is shuffle and why does it bad?
+---------------------------------
+The Spark shuffle is a mechanism for redistributing or re-partitioning data so that the data grouped differently across partitions. 
+Spark shuffle is a very expensive operation as it moves the data between executors or even between worker nodes in a cluster.
+Spark shuffling triggers when we perform certain transformation operations like gropByKey(), reducebyKey(), join() on RDD and DataFrame.
+Spark Shuffle is an expensive operation since it involves the following:
+	1.Disk I/O
+	2.Involves data serialization and deserialization
+	3.Network I/O
+
+
+Deploy modes. (Local, Client and Cluster)
+-----------------------------------------
+Spark local mode (or pseudo-cluster) is a non-distributed single-JVM deployment mode. Spark spawns all the execution 
+components - driver, executor, LocalSchedulerBackend, and master - in the same single JVM. The default parallelism is 
+the number of threads as specified in the master URL. This is the only mode where a driver is used for execution.
+
+The behaviour of spark job depends on the “driver” component. When ”driver” component of spark job runs on the machine from which 
+job is submitted, it's considered as client mode.
+
+Cluster mode - here “driver” component of spark job will not run on the local machine from which job is submitted. 
+Hence, this spark mode is basically “cluster mode”. In addition, here spark job will launch “driver” component inside the cluster.
+
+
+run modes (local[1] vs local[*] vs remote [with yarn only or not?])
+-------------------------------------------------------------------
+There are many different ways to set master url. All depends on what our Scheduler is. In simplest case, we use a local scheduler, 
+then we have many options on how to schedule out resources locally: we can limit it to one thread, assign a specific number of threads, 
+or give all the possible cores.
+
+local 	 - Run Spark locally with one worker thread.
+local[K] - Run Spark locally with K worker threads (ideally, set this to the number of cores on your machine).
+local[*] - Run Spark locally with as many worker threads as logical cores on your machine.
+
+The Spark Standalone cluster manager is a simple cluster manager available as part of the Spark distribution. 
+It has HA for the master, is resilient to worker failures, has capabilities for managing resources per application, 
+and can run alongside of an existing Hadoop deployment and access HDFS (Hadoop Distributed File System) data. 
+The distribution includes scripts to make it easy to deploy either locally or in the cloud on Amazon EC2
+
+spark://HOST:PORT - Connects to the given Spark standalone cluster master.
+
+Hadoop YARN, a distributed computing framework for job scheduling and cluster resource management, has HA for masters and slaves.
+
+yarn	 - Connect to a YARN cluster in client or cluster mode depending on the value of --deploy-mode. 
+	   The cluster location will be found based on the HADOOP_CONF_DIR or YARN_CONF_DIR variable.
+
+application workflow (jobs, stages, tasks)
+--------------------------------------------------
+A Task is a single operation (.map or .filter) applied to a single Partition.
+Each Task is executed as a single thread in an Executor.If the dataset has 2 Partitions, 
+an operation such as a filter() will trigger 2 Tasks, one for each Partition. 
+
+A Stage is a sequence of Tasks that can all be run together, in parallel, without a shuffle.
+For example: using .read to read a file from disk, then runnning .map and .filter can all be 
+done without a shuffle, so it can fit in a single stage.
+
+A Job is a sequence of Stages, triggered by an Action such as .count(), foreachRdd(), collect(),
+read() or write().
+
+
+why using collect is bad practice?
+---------------------------------------------------
+Collect action will try to move all data in RDD/DataFrame to the machine with the driver and where it may run out of memory and crash.
+Instead, one can make sure that the number of items returned is sampled by calling take or takeSample, or perhaps by filtering.
+
+
+reduceByKey vs groupByKey vs combineByKey (rdd)
+------------------------------------------------
+
+Basically reduceByKey function works only for RDDs which contains key and value pairs kind of elements(i.e RDDs having tuple or Map 
+as a data element). It is a transformation operation which means it is lazily evaluated. We need to pass one associative function as 
+a parameter, which will be applied to the source RDD and will create a new RDD as with resulting values(i.e. key value pair). 
+This operation is a wide operation as data shuffling may happen across the partitions.
+
+Spark combineByKey is a transformation operation on PairRDD (i.e. RDD with key/value pair). It is a wider operation as it requires
+shuffle in the last stage.
+In order to aggregate an RDD’s elements in parallel, Spark’s combineByKey method requires three functions:createCombiner,mergeValue,mergeCombiner
+	The first required argument in the combineByKey method is a function to be used as the very first aggregation step for each key. 
+		The argument of this function corresponds to the value in a key-value pair.
+	The next required function tells combineByKey what to do when a combiner is given a new value. 
+		The arguments to this function are a combiner and a new value.
+	The final required function tells combineByKey how to merge two combiners.
+
+groupByKey groups values with same key. So if we create an RDD from [(‘B', 1), ('B', 2), (‘A', 3) , (‘A’, 4) , (‘B’, 5)] and group it by key, 
+then we get rid of duplicating keys (couple of As and Bs), and get values grouped: B gets [1,2,5] as a value, when A gets [3,4] as value.
+
+Coalesce VS Repartition
+-------------------------------------------------
+Repartition - Reshuffle the data in the RDD randomly to create either more or fewer partitions and balance it across them.
+This always shuffles all data over the network.
+
+Coalesce - Decrease the number of partitions in the RDD to numPartitions. Useful for running operations more efficiently after
+filtering down a large dataset.
+
+Difference between coalesce and repartition:
+	Coalesce uses existing partitions to minimize the amount of data that's shuffled. Repartition creates new partitions and does a full shuffle. 
+	Coalesce results in partitions with different amounts of data (sometimes partitions that have much different sizes) and repartition results 
+	in roughly equal sized partitions.
+
+RDD VS Dataframe VS Dataset
+------------------------------------------
+Resilient Distributed Dataset (aka RDD) is the primary data abstraction in Apache Spark and the core of Spark.
+The main disadvantage to RDDs is that they don’t perform particularly well. Whenever Spark needs to distribute the data within the cluster,
+ or write the data to disk, it does so using Java serialization by default (although it is possible to use Kryo as a faster alternative in most cases).
+The overhead of serializing individual Java and Scala objects is expensive and requires sending both data and structure between nodes (each serialized 
+object contains the class structure as well as the values). There is also the overhead of garbage collection that results from creating and destroying 
+individual objects.
+
+The DataFrame API introduces the concept of a schema to describe the data, allowing Spark to manage the schema and only pass data between nodes, 
+in a much more efficient way than using Java serialization. There are also advantages when performing computations in a single process as Spark 
+can serialize the data into off-heap storage in a binary format and then perform many transformations directly on this off-heap memory, avoiding 
+the garbage-collection costs associated with constructing individual objects for each row in the data set. 
+Because Spark understands the schema, there is no need to use Java serialization to encode the data.The DataFrame API is radically different from 
+the RDD API because it is an API for building a relational query plan that Spark’s Catalyst optimizer can then execute. The API is natural for 
+developers who are familiar with building query plans, but not natural for the majority of developers. The query plan can be built from SQL 
+expressions in strings or from a more functional approach using a fluent-style API.
+
+A Dataset is a distributed collection of data. Dataset is a new interface added in Spark 1.6 that provides the benefits of RDDs (strong typing,
+ ability to use powerful lambda functions) with the benefits of Spark SQL’s optimized execution engine. A Dataset can be constructed from JVM 
+objects and then manipulated using functional transformations (map, flatMap, filter, etc.). The Dataset API is available in Scala and Java. 
+Python does not have the support for the Dataset API.
+
+Catalyst, CBO, Tungsten
+-----------------------------
+At the core of Spark SQL is the Catalyst optimizer, which leverages advanced programming language features in a novel way to build an extensible 
+query optimizer. Catalyst is based on functional programming constructs in Scala and designed with these key two purposes:
+	Easily add new optimization techniques and features to Spark SQL
+	Enable external developers to extend the optimizer (e.g. adding data source specific rules, support for new data types, etc.)
+Catalyst contains a general library for representing trees and applying rules to manipulate them. On top of this framework, it has libraries specific
+to relational query processing (e.g., expressions, logical query plans), and several sets of rules that handle different phases of query 
+execution: analysis, logical optimization, physical planning, and code generation to compile parts of queries to Java bytecode. 
+
+Cost-based optimization (CBO) framework that collects and leverages a variety of per-column data statistics (e.g., cardinality, number of distinct values, 
+NULL values, max/min, average/max length, etc.) to improve the quality of query execution plans. Leveraging these statistics helps Spark to make better 
+decisions in picking the most optimal query plan. Examples of these optimizations include selecting the correct build side in a hash-join, 
+choosing the right join type (broadcast hash-join vs. shuffled hash-join) or adjusting a multi-way join order, among others.
+
+Tungsten - project to make changes to Apache Spark’s execution engine that focuses on substantially improving the efficiency of memory and CPU 
+for Spark applications, to push performance closer to the limits of modern hardware.
+The focus on CPU efficiency is motivated by the fact that Spark workloads are increasingly bottlenecked by CPU and memory use rather than 
+IO and network communication.
+	*Off-Heap Memory Management using binary in-memory data representation aka Tungsten row format and managing memory explicitly,
+	*Cache Locality which is about cache-aware computations with cache-aware layout for high cache hit rates.
+
+
+
+Spark optimization (spark.serializer, spark.driver.maxResultSize, spark.sql.shuffle.partitions Vs spark.default.parallelism)
+----------------------------------------------------------------------------------------------------------------------------
+Serialization plays an important role in the performance of any distributed application. Formats that are slow to serialize objects into, 
+or consume a large number of bytes, will greatly slow down the computation. Often, this will be the first thing that should be tuned to optimize 
+a Spark application. Spark aims to strike a balance between convenience (allowing you to work with any Java type in your operations) and performance. 
+It provides two serialization libraries:
+	Java serialization: By default, Spark serializes objects using Java’s ObjectOutputStream framework, and can work with any class you create 
+		that implements java.io.Serializable. You can also control the performance of your serialization more closely 
+		by extending java.io.Externalizable. Java serialization is flexible but often quite slow, and leads to large serialized formats for 
+		many classes.
+	Kryo serialization: Spark can also use the Kryo library (version 4) to serialize objects more quickly. Kryo is significantly faster 
+		and more compact than Java serialization (often as much as 10x), but does not support all Serializable types and requires you 
+		to register the classes you’ll use in the program in advance for best performance.
+spark.serializer - property through which we can set class for serializing objects that will be sent over the network or need to be cached in 
+serialized form.
+
+spark.driver.maxResultSize - Limit of total size of serialized results of all partitions for each Spark action (e.g. collect) in bytes. 
+ Should be at least 1M, or 0 for unlimited. Jobs will be aborted if the total size is above this limit. Having a high limit may cause out-of-memory
+ errors in driver (depends on spark.driver.memory and memory overhead of objects in JVM). Setting a proper limit can protect the driver from out-of-memory
+ errors.
+
+spark.sql.shuffle.partitions configures the number of partitions that are used when shuffling data for joins or aggregations.
+spark.default.parallelism is the default number of partitions in RDDs returned by transformations like join, reduceByKey, 
+and parallelize when not set explicitly by the user. Spark.default.parallelism seems to only be working for raw RDD and is ignored 
+when working with dataframes.
+
+
+Cache vs persist 
+-------------------------------------
+Spark Cache and persist are optimization techniques for iterative and interactive Spark applications to improve the performance of the jobs or applications.
+Using cache() and persist() methods, Spark provides an optimization mechanism to store the intermediate computation of an RDD, DataFrame, and 
+Dataset so they can be reused in subsequent actions(reusing the RDD, Dataframe, and Dataset computation result’s).
+
+Both caching and persisting are used to save the Spark RDD, Dataframe and Dataset’s. But, the difference is, RDD cache() method default saves it to 
+memory (MEMORY_ONLY) whereas persist() method is used to store it to user-defined storage level.
+When you persist a dataset, each node stores it’s partitioned data in memory and reuses them in other actions on that dataset. 
+And Spark’s persisted data on nodes are fault-tolerant meaning if any partition of a Dataset is lost, it will automatically be 
+recomputed using the original transformations that created it.
+
+Window operations
+-------------------------------------
+Window aggregate functions (aka window functions or windowed aggregates) are functions that perform a calculation over a group of records called 
+window that are in some relation to the current record (i.e. can be in the same partition or frame as the current row).
+In other words, when executed, a window function computes a value for each and every row in a window (per window specification).
+Spark SQL supports three kinds of window functions: ranking functions, analytic functions,aggregate functions.
+
+Metastore
+-------------------------------------
+Any kind of SQL engine requires metadata store. From Apache Spark we can run SQL query on data stored on external storages like databases and 
+Object storage.
+Spark SQL uses a Hive metastore to manage the metadata of persistent relational entities (e.g. databases, tables, columns, partitions) in a 
+relational database (for fast access). A Hive metastore warehouse (aka spark-warehouse) is the directory where Spark SQL persists tables whereas
+ a Hive metastore (aka metastore_db) is a relational database to manage the metadata of the persistent relational entities, e.g. databases, tables,
+ columns, partitions. By default, Spark SQL uses the embedded deployment mode of a Hive metastore with a Apache Derby database.
+
+Speculative Execution
+-------------------------------------
+In big data applications where dozens of cluster nodes are supposed to collectively work on a certain job but 
+one machine has a hardware or software issue thus terribly slowing down the whole process. Spark has a solution to this problem and it’s called 
+speculative execution.
+
+At the level of a single stage in a Spark job, Spark monitors the time needed to complete tasks in the stage. If some task(s) takes much more time 
+(more on that later) than other ones in same stage, Spark will resubmit a new copy of same task on another worker node. This way we'll have 2 identical 
+tasks running in parallel and when one of them completes successfully, Spark will kill the other one and pick the output of the successful 
+task and move on.
+
+There are four conf values for low-level control of Spark behaviour:
+	spark.speculation : Boolean flag to control whether speculative execution is enabled or not.
+	spark.speculation.interval: How often Spark will check for tasks to speculate.
+	spark.speculation.multiplier: It’s a number and should be greater than one. It’s how many times a task duration is larger than the median of 
+		the duration of other completed tasks for spark to pick it for re-submission
+	spark.speculation.quantile: Percentage of tasks completed after which Spark will start to apply speculative execution.
+
+
+DStream. Nature and anatomy.
+-------------------------------------
+A Discretized Stream (DStream), the basic abstraction in Spark Streaming, is a continuous sequence of RDDs (of the same type) representing 
+a continuous stream of data. DStreams can either be created from live data (such as, data from TCP sockets, Kafka, Flume, etc.) 
+using a StreamingContext or it can be generated by transforming existing DStreams using operations such as map, window and reduceByKeyAndWindow. 
+While a Spark Streaming program is running, each DStream periodically generates a RDD, either from live data or by transforming the RDD 
+generated by a parent DStream.
+
+Window calculations in Streaming.
+--------------------------------
+Spark Streaming also provides windowed computations, which allow you to apply transformations over a sliding window of data.
+There are two parameters which are to be defined for every window operation:
+   window length    - The duration of the window
+   sliding interval - The interval at which the window operation is performed
+These two parameters must be multiples of the batch interval of the source DStream.
+
+Checkpointing.WAL
+--------------------------------
+In order to be able to operate 24/7 and be resilient to failures unrelated to the application logic, Spark Streaming needs to checkpoint enough 
+information to a fault- tolerant storage system such that it can recover from failures. 
+There are two types of data that are checkpointed.
+	Metadata checkpointing - Saving of the information defining the streaming computation to fault-tolerant storage like HDFS. This is used to
+	  	recover from failure of the node running the driver of the streaming application (discussed in detail later). 
+		Metadata includes:
+			Configuration - The configuration that was used to create the streaming application.
+			DStream operations - The set of DStream operations that define the streaming application.
+			Incomplete batches - Batches whose jobs are queued but have not completed yet.
+	Data checkpointing - Saving of the generated RDDs to reliable storage. This is necessary in some stateful transformations 
+		that combine data across multiple batches. In such transformations, the generated RDDs depend on RDDs of previous batches, 
+		which causes the length of the dependency chain to keep increasing with time. To avoid such unbounded increases in recovery time
+		 (proportional to dependency chain), intermediate RDDs of stateful transformations are periodically checkpointed to reliable 
+		storage (e.g. HDFS) to cut off the dependency chains.
+
+
+On fault tolerance, in the case of Spark Streaming application, zero data loss is not always guaranteed, as the data will be buffered in the 
+executors’ memory until they get processed. If the driver fails, all of the executors will be killed, with the data in their memory, and the 
+data cannot be recovered.To overcome this data loss scenario, Write Ahead Logging (WAL) has been introduced in Apache Spark 1.2. With WAL enabled,
+the intention of the operation is first noted down in a log file, such that if the driver fails and is restarted, the noted operations in that log
+file can be applied to the data.
+WAL can be enabled by performing the below:
+	1. Setting the checkpoint directory, by using streamingContext.checkpoint(path)
+	2. Enabling the WAL logging, by setting spark.stream.receiver.WriteAheadLog.enable to True.
+
+
+Spark Streaming Recievers
+----------------------------------
+Input DStreams are DStreams representing the stream of input data received from streaming sources. Every input DStream is associated with a 
+Receiver object which receives the data from a source and stores it in Spark’s memory for processing.
+
+The key component of Spark streaming application is called Receiver. It is responsible for opening new connections with the sources, listening events
+from them and aggregating incoming data within the memory. If receiver’s worker node is running out of memory, it starts using disk storage for 
+persistence operations. 
+
+
+Spark Streaming application workflow
+-------------------------------------
+All incoming data is first aggregated within receiver into chunks called Blocks. After preconfigured interval of time called batchInterval Spark 
+does logical aggregation of these blocks into another entity called Batch. Batch has links to all blocks formed by receivers and uses this 
+information for generation of RDD. 
+
+Normally RDD would consist of a number of partitions where each partition would reference the block generated by the receiver on the start stage.
+Streaming application can have lots of receivers located at different physical nodes, so the actual data would be distributed across the cluster
+from the start. Batch interval is global for the whole application and is defined on the stage of creation of Streaming Context. Block generation
+interval is a receiver based property which could be defined through the configuration of  spark.streaming.blockInterval property.
+
+All receivers are wrapped within component called DStream. This is a single start point of streaming application which knows how to produce RDDs 
+using the data and knows how to produce RDD from receivers. Single application can have multiple DStreams which could target different sources.
+
+foreach partition VS foreach RDD
+-------------------------------------
+foreach - a generic function for invoking operations with side effects. For each element in the RDD, it invokes the passed function . 
+This is generally used for manipulating accumulators or writing to external stores.
+
+foreachpartition - Similar to foreach() , but instead of invoking function for each element, it calls it for each partition. 
+The function should be able to accept an iterator. This is more efficient than foreach() because it reduces the number of function 
+calls.
+
+
+Monitoring Streaming Queries (Reporting Metrics,  Dropwizard )
+--------------------------------------------------------------
+There are multiple ways to monitor active streaming queries. You can either push metrics to external systems using Spark’s Dropwizard Metrics support, 
+or access them programmatically. All queries c associated with a SparkSession can be asynchronously monitored by attaching a StreamingQueryListener 
+(Scala/Java docs). Once you attach your custom StreamingQueryListener object with sparkSession.streams.attachListener(), you will get callbacks when a query is started and stopped and when there is progress made in an active query.
+
+Spark has a configurable metrics system based on the Dropwizard Metrics Library. This allows users to report Spark metrics to a variety of sinks including HTTP, JMX, and CSV files. The metrics are generated by sources embedded in the Spark code base. They provide instrumentation for specific activities and Spark components. The metrics system is configured via a configuration file that Spark expects to be present at $SPARK_HOME/conf/metrics.properties
+
+Spark’s metrics are decoupled into different instances corresponding to Spark components. Within each instance, you can configure a set of sinks to which metrics are reported. The following instances are currently supported:
+
+  master: The Spark standalone master process.
+  applications: A component within the master which reports on various applications.
+  worker: A Spark standalone worker process.
+  executor: A Spark executor.
+  driver: The Spark driver process (the process in which your SparkContext is created).
+  shuffleService: The Spark shuffle service.
+  applicationMaster: The Spark ApplicationMaster when running on YARN.
+  mesos_cluster: The Spark cluster scheduler when running on Mesos.
+
+Spark Structured streaming: basic concept; Watermarking
+--------------------------------
+Structured Streaming is a scalable and fault-tolerant stream processing engine built on the Spark SQL engine. You can express your streaming computation the same way you would express a batch computation on static data. The Spark SQL engine will take care of 
+running it incrementally and continuously and updating the final result as streaming data continues to arrive.
+The computation is executed on the same optimized Spark SQL engine.
+
+The key idea in Structured Streaming is to treat a live data stream as a table that is being continuously appended. This leads to a new stream 
+processing model that is very similar to a batch processing model. You will express your streaming computation as standard batch-like query as on 
+a static table, and Spark runs it as an incremental query on the unbounded input table.
+
+Watermarking is a useful method which helps a Stream Processing Engine to deal with lateness. Basically, a watermark is a threshold to specify how long the system waits for late events. If an arriving event lies within the watermark, it gets used to update a query. Otherwise, if it’s older than the watermark, it will be dropped and not further processed by the Streaming Engine.
+You can enable it by simply adding the withWatermark-Operator to a query:
+  It takes two Parameters, 
+  a) an event time column (must be the same as the aggregate is working on) and 
+  b) a threshold to specify   for how long late data should be processed (in event time unit).
+
+Spark Structured streaming Output modes. (Append; Complete; Update)
+-------------------------------
+In structured streaming, output of the stream processing is a dataframe or table. The output modes of the query signify how this infinite output 
+table is written to the sink, in our example to console.
+
+There are three output modes:
+	Append - In this mode, the only records which arrive in the last trigger(batch) will be written to sink. This is supported for simple 
+	transformations like select, filter etc. As these transformations don’t change the rows which are calculated for earlier batches, 
+	appending the new rows work fine.
+
+	Complete - In this mode, every time complete resulting table will be written to sink. Typically used with aggregation queries. 
+	In case of aggregations, the output of the result will be keep on changing as and when the new data arrives.
+	
+	Update -  Only the rows in the Result Table that were updated since the last trigger will be outputted to the sink.
+
+Spark Kafka integration
+-------------------------------
+There are two approaches to Spark + Kafka integration - the old approach using Receivers and Kafka’s high-level API, and experimental approach 
+without using Receivers.
+	Receiver-based Approach: This approach uses a Receiver to receive the data. The Received is implemented using the Kafka high-level consumer API.
+	 As with all receivers, the data received from Kafka through a Receiver is stored in Spark executors, and then jobs launched by Spark Streaming 
+		processes the data.
+
+	Under "direct" approach, instead of using receivers to receive data, this approach periodically queries Kafka for the latest offsets in 
+		each topic+partition, and accordingly defines the offset ranges to process in each batch. When the jobs to process the data are 
+		launched, Kafka’s simple consumer API is used to read the defined ranges of offsets from Kafka (similar to read files from a file system).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

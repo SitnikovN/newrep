@@ -1,0 +1,133 @@
+1. Hive components and their role (Driver, Compiler, Metastore, Execute Engine, Optimizer):
+
+Driver - The Hive driver receives the HiveQL statements submitted by the user through the command shell (or other client sevices). 
+	It creates the session handles for the query and sends the query to the compiler.
+
+Compiler - Hive compiler parses the query. It performs semantic analysis and type-checking on the different query blocks and 
+	   query expressions by using the metadata stored in metastore and generates an execution plan.
+	   The Compiler is invoked by the driver upon receiving a HiveQL statement.
+
+Metastore - Metastore is a central repository that stores the metadata information about the structure of tables and partitions, 
+	    including column and column type information. 
+
+Execute engine - Execution engine, after the compilation and optimization steps, executes the execution plan 
+		created by the compiler in order of their dependencies using Hadoop.
+
+Optimizer -  performs the transformation operations on the execution plan and splits the task to improve efficiency and scalability.
+		Optimized logical plan in the form of a DAG of jobs.
+
+2. Schema on read vs Schema on write:
+	schema on write - data load approach that is used by traditional rdbms to ensure data integrity features.
+	If the data being loaded doesn’t conform to the schema, then it is rejected. it's called
+		schema on write  because the data is checked against the schema when it is written into the database.
+	Hive, on the other hand, doesn’t verify the data when it is loaded, but rather when a
+		query is issued. This is called schema on read. Such a design provides the ability to load data much faster as we are omitting
+		stages of reading data, parsing and serializing to disk in the database’s internal format.
+
+3. Metastore:
+	It consists of two pieces: service and the backing store for the data. 
+		By default, the metastore service runs in the same JVM as the Hive service and contains an embedded Derby database
+			instance backed by the local disk. 
+		Metastore could be configured in three possible ways:
+			Embedded (derby DB)  For experimental purpose only!
+			Local (In this mode the Hive metastore service runs in the same process as the main HiveServer process, 
+					but the metastore database runs in a separate process, and can be on a separate host.) 
+			Remote (In this mode the Hive metastore service runs in its own JVM process.)
+4. Beeline versus Hive CLI:
+	There are two Hive clients: the Hive CLI and Beeline. The primary difference between the two involves how the clients connect to Hive.
+		The Hive CLI, which connects directly to HDFS and the Hive Metastore, and can be used only on a host with access 
+			to those services.	
+	Beeline, which connects to HiveServer2 and requires access to only one .jar file: hive-jdbc-<version>-standalone.jar
+
+	Two modes of Beeline operation: 
+		Embedded - The Beeline client and the Hive installation both reside on the same host machine.
+			No TCP connectivity is required.
+		Remote -   Used to support multiple, concurrent clients executing queries against the same remote Hive installation.
+
+5. Partitions and Buckets:
+	Partitions separate the data by the values of one or more columns. Hive physically creates multiple directories for each partition. 
+		So partitions are not part of the values written to a table. For example, you can partition your data by a year or by a user identifier. 
+		Then, by querying the records for a specific year, only the files inside that years directory will be scanned, skipping all 
+		the other partitions. Which is a major performance improvement. 
+
+	Buckets can divide tables or partitions further based on the hash function of a column or multiple columns in a table. 
+		Unlike partitions where each partition creates a directory in HDFS each bucket is created as a file. One file per bucket. 
+		Usually may be done for two reasons:
+			Join of two tables that are bucketed on the same columns—which include
+				the join columns—can be efficiently implemented as a map-side join.
+			For fast sampling (extraction of small subset of data for local processing or other needs)
+6. View vs Temporary table:
+	 Temporary table implements to improve performance by storing data outside HDFS for intermediate use, or reuse, by a complex query.
+		Temporary table data persists only during the current Apache Hive session. Hive drops the table at the end of the session.
+
+	  Hive View is a compiled peace of code which exists as a searchable object in a database, but it doesn't store the result set of data. It executes 
+		on a query runtime where it's used.
+
+7. SQL vs HQL - Hive’s SQL dialect, called HiveQL, is a mixture of SQL-92, MySQL, and Oracle’s SQL
+		dialect. The level of SQL-92 support has improved over time, and will likely continue
+		to get better. HiveQL also provides features from later SQL standards, such as window
+		functions (also known as analytic functions) from SQL:2003. 
+		HQL: Read-only views; subqueries in FROM,WHERE,HAVING; SORT BY for partial ordering, LIMIT to limit number of rows returned
+
+8. ACID Hive:
+	ACID stands for four traits of database transactions:  
+		Atomicity (an operation either succeeds completely or fails, it does not leave partial data), 
+		Consistency (once an application performs an operation the results of that operation are visible to it in every subsequent operation), 
+		Isolation (an incomplete operation by one user does not cause unexpected side effects for other users), 
+		and Durability (once an operation is complete it will be preserved even in the face of machine or system failure).		
+			
+9. Vectoriztion: 
+	Vectorized query execution is a Hive feature that greatly reduces the CPU usage for typical query operations like scans, filters, aggregates, 
+	and joins. A standard query execution system processes one row at a time. This involves long code paths and significant metadata interpretation
+	 in the inner loop of execution. Vectorized query execution streamlines operations by processing a block of 1024 rows at a time. 
+	Within the block, each column is stored as a vector (an array of a primitive data type). Simple operations like arithmetic and comparisons are done by quickly 
+	iterating through the vectors in a tight loop, with no or very few function calls or conditional branches inside the loop. 
+
+10. CBO:
+	Hive’s Cost-Based Optimizer (CBO) is a core component in Hive’s query processing engine. Powered by Apache Calcite, the CBO optimizes and calculates the cost of various plans for a query.
+	The main goal of a CBO is to generate efficient execution plans by examining the tables and conditions specified in the query, ultimately cutting
+	down on query execution time and reducing resource utilization. After parsing, a query gets converted to a logical tree (Abstract Syntax Tree) 
+	that represents the operations that the query must perform, such as reading a particular table or performing an inner JOIN.
+	Calcite applies various optimizations such as query rewrite, JOIN reordering, and deriving implied predicates and JOIN elimination to produce 
+	logically equivalent plans.
+
+11. UDF:
+	There are three types of UDF in Hive: (regular) UDFs, user-defined aggregate functions (UDAFs), and user-defined table-generating functions (UDTFs). 
+	They differ in the number of rows that they accept as input and produce as output:
+		• A UDF operates on a single row and produces a single row as its output. Most functions, such as mathematical functions and string functions, are of this type.
+		• A UDAF works on multiple input rows and creates a single output row. Aggregate
+			functions include such functions as COUNT and MAX.
+		• A UDTF operates on a single row and produces multiple rows—a table—as output.
+
+	Basically, we can use two different interfaces for writing Apache Hive User Defined Functions.
+	Simple API and Complex API. As long as our function reads and returns primitive types, 
+	we can use the simple API (org.apache.hadoop.hive.ql.exec.UDF). In other words, it means basic Hadoop & Hive writable types. 
+	Such as Text, IntWritable, LongWritable, DoubleWritable, etc. Basically, with the simpler UDF API, 
+	building a Hive User Defined Function involves little more than writing a class with one function (evaluate).
+
+	The main limitation of SImple API is related to handling of complex types. One of Hive's main feature is its advanced handling of advanced types:
+		arrays, maps, structs. A generic UDF is written by extending the GenericUDF class.
+	A key concept when working with Generic UDF and UDAF is the ObjectInspector.
+
+	In generic UDFs, all objects are passed around using the Object type. Hive is structured this way so that all code handling records and cells is 
+	generic, and to avoid the costs of instantiating and deserializing objects when it's not needed. Therefefore, all interaction with the data passed 
+	in to UDFs is done via ObjectInspectors. They allow you to read values from an UDF parameter, and to write output values.
+	
+	A Hive UDF in Python is a regular Python script. A key word TRANSFORM specifies the columns to be sent to the UDF and USING operator is referring the script
+	with a UDF logic.
+
+12. Engine commpare:
+	The MapReduce paradigm consists of two sequential tasks: Map and Reduce (hence the name). Map filters and sorts data while converting 
+	it into key-value pairs. Reduce then takes this input and reduces its size by performing some kind of summary operation over the dataset.
+	It operates in sequential steps by reading data from the cluster, performing its operation on the data, writing the results 
+	back to the cluster, reading updated data from the cluster, performing the next data operation, writing those results back to the 
+	cluster and so on.
+
+	Spark performs similar operations, but it does so in a single step and in memory. It reads data from the cluster, performs its operation 
+	on the data, and then writes it back to the cluster. The reason that Spark is so fast is that it processes everything in memory.
+	Spark has the upper hand for iterative computations that need to pass over the same data many times. But when it comes to one-pass 
+	ETL-like jobs—for example, data transformation or data integration—then that's exactly what MapReduce was designed for.
+
+	Like Spark, Apache Tez is an open-source framework for big data processing based on the MapReduce technology. Both Spark and Tez offer 
+	an execution engine that is capable of using directed acyclic graphs (DAGs) to process extremely large quantities of data. Spark can execute either as a standalone application 
+	or on top of YARN. Tez, however, has been purpose-built to execute on top of YARN. 
